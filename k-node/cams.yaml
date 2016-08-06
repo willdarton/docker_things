@@ -1,0 +1,78 @@
+
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv1
+  labels:
+    type: local
+spec:
+  accessModes:
+    - ReadWriteOnce
+  capacity:
+    storage: 3Gi
+  nfs:
+    path: "/opt/wsc/FI9804P_00626E53648A"
+    server: node3
+  persistentVolumeReclaimPolicy:
+    type:Recycle
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: webapps-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Gi
+---
+apiVersion: v1
+kind: ReplicationController
+metadata:
+  name: cams
+spec:
+  replicas: 3
+  selector:
+    app: cams
+  template:
+    metadata:
+      labels:
+        app: cams
+    spec:
+      containers:
+      - name: cams
+        image: willd/rpi-nginx
+        ports:
+        - containerPort: 80
+        volumeMounts:
+          - name: www
+            mountPath: /var/www/html
+          - name: logs
+            mountPath: /var/log/nginx
+      volumes:
+       - name: www
+         persistentVolumeClaim:
+           claimName: webapps-pvc
+       - name: logs
+         hostPath: 
+           path: /tmp/logs
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cams-service
+spec:
+  ports:
+  - port: 80 # the port that this service should serve on
+    # the container on each pod to connect to, can be a name
+    # (e.g. 'www') or a number (e.g. 80)
+    targetPort: 80
+    protocol: TCP
+  # just like the selector in the replication controller,
+  # but this time it identifies the set of pods to load balance
+  # traffic to.
+  selector:
+    app: cams
+  type: LoadBalancer
+  externalIPs: ["192.168.72.210"]

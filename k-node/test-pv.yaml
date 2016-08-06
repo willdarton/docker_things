@@ -1,0 +1,16 @@
+kind: PersistentVolume
+apiVersion: v1
+metadata:
+  name: pv1
+  labels:
+    type: local
+spec:
+  accessModes:
+    - ReadWriteOnce
+  capacity:
+    storage: 3Gi
+  nfs:
+    path: "/opt/wsc/FI9804P_00626E53648A"
+    server: node3
+  persistentVolumeReclaimPolicy:
+    type:Recycle
