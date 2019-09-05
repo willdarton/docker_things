@@ -1,0 +1,200 @@
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: influxdb-pv
+  labels:
+    app: influxdb
+    project: solargraphs
+spec:
+  capacity:
+    storage: 5Gi
+  volumeMode: Filesystem
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Recycle
+  storageClassName: slow
+  mountOptions:
+    - hard
+  nfs:
+    path: /shared/kubes/influxdb
+    server: 192.168.42.21
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  labels:
+    app: influxdb
+    project: solargraphs
+  name: influxdb-pvc
+spec:
+  storageClassName: slow
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Gi
+  matchLabels:
+    app: influxdb
+---
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  labels:
+    app: influxdb
+  name: influxdb
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: influxdb
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        app: influxdb
+    spec:
+      volumes:
+      - name: var-lib-influxdb
+        persistentVolumeClaim:
+          claimName: influxdb-pvc
+      containers:
+      - envFrom:
+        - secretRef:
+            name: influxdb-creds
+        image: influxdb
+        name: influxdb
+        volumeMounts:
+        - mountPath: /var/lib/influxdb
+          name: var-lib-influxdb
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: influxdb
+spec:
+  ports:
+  - port: 8086
+    targetPort: 8086
+    protocol: TCP
+  selector:
+    app: influxdb
+  type: ClusterIP
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: grafana-pv
+  labels:
+    app: grafana 
+    project: solargraphs
+spec:
+  capacity:
+    storage: 5Gi
+  volumeMode: Filesystem
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Recycle
+  storageClassName: slow
+  mountOptions:
+    - hard
+  nfs:
+    path: /shared/kubes/grafana
+    server: 192.168.42.21
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  labels:
+    app: grafana
+    project: solargraphs
+  name: grafana-pvc
+spec:
+  storageClassName: slow
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Gi
+  matchLabels:
+    app: grafana
+---
+apiVersion: v1
+kind: ReplicationController
+metadata:
+  name: grafana
+spec:
+  replicas: 1
+  selector:
+    app: grafana
+  template:
+    metadata:
+      labels:
+        app: grafana
+    spec:
+      volumes:
+      - configMap:
+          name: grafana-config
+        name: grafana-config
+      containers:
+      - image: grafana/grafana:6.3.4
+        name: grafana
+        envFrom:
+        - secretRef:
+            name: grafana-creds
+        ports:
+        - containerPort: 3000
+        volumeMounts:
+        - mountPath: /etc/grafana/provisioning/datasources/influxdb-datasource.yml
+          name: grafana-config
+          readOnly: true
+          subPath: influxdb-datasource.yml
+        - mountPath: /etc/grafana/provisioning/dashboards/grafana-dashboard-provider.yml
+          name: grafana-config
+          readOnly: true
+          subPath: grafana-dashboard-provider.yml
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana-service
+spec:
+  ports:
+  - port: 3000
+    targetPort: 3000
+    protocol: TCP
+  selector:
+    app: grafana
+  type: LoadBalancer
+---
+apiVersion: batch/v1beta1
+kind: CronJob
+metadata:
+  labels:
+    app: python-sonnen-stats
+  name: python-sonnen-stats
+spec:
+  concurrencyPolicy: Replace
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    metadata:
+    spec:
+      template:
+        metadata:
+        spec:
+          containers:
+          - envFrom:
+            - secretRef:
+                name: influxdb-creds
+            image: docker.io/willd/python-sonnen-stats:latest
+            env:
+            - name: SONNEN_URL
+              value: "192.168.42.117"
+            - name: SONNEN_PORT
+              value: "8080"
+            imagePullPolicy: Always
+            name: python-sonnen-stats
+          restartPolicy: Never
+  schedule: '*/5 * * * *'
+  successfulJobsHistoryLimit: 3
+
